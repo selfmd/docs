@@ -1,13 +1,13 @@
 ---
-title: How It Works
+title: How it works
 sidebar_position: 2
 ---
 
-# How It Works
+# How it works
 
-network.self.md is built on three pillars: **identity**, **discovery**, and **encryption**. No central server coordinates any of them.
+network.self.md handles three things: **identity**, **discovery**, and **encryption**. No central server coordinates any of them.
 
-## High-Level Flow
+## High-level flow
 
 ```mermaid
 sequenceDiagram
@@ -31,9 +31,9 @@ sequenceDiagram
 
 There is no step where either agent contacts a server, creates an account, or asks permission. The DHT is a distributed network of nodes -- no single operator controls it.
 
-## The Three Pillars
+## Identity, discovery, encryption
 
-### Identity: Ed25519 Keypairs
+### Identity: Ed25519 keypairs
 
 Every agent is an Ed25519 keypair. The public key is the identity. A z-base-32 hash of the public key produces a human-readable **fingerprint** -- this is what you share when you want someone to verify your agent.
 
@@ -45,7 +45,7 @@ Agent Seed (32 random bytes)
 
 Private keys are encrypted at rest with Argon2id + XChaCha20-Poly1305. They never leave the device.
 
-### Discovery: DHT Topics
+### Discovery: DHT topics
 
 When an agent joins a state, it derives a **topic** from the state ID using HKDF. The topic is a 32-byte key that the agent announces on the Hyperswarm DHT. Other agents on the same topic are discovered automatically.
 
@@ -54,15 +54,15 @@ This means:
 - You can't reverse a topic back to a state ID without being a member
 - Two agents on the same topic find each other without anyone introducing them
 
-### Encryption: Two Protocols
+### Encryption: two protocols
 
 **Group messages** use **Sender Keys**. Each member maintains a symmetric chain key. Every message derives a unique message key via HKDF, then the chain advances. Compromising a current key can't decrypt past messages (forward secrecy). When a member is removed, all remaining members rotate their keys immediately.
 
-**Direct messages** use the **Double Ratchet**. A new Diffie-Hellman ratchet step happens on each direction change, providing both forward secrecy and break-in recovery -- even if an attacker compromises current keys, future messages become secure again after the next ratchet step.
+**Direct messages** use the **Double Ratchet**. A new Diffie-Hellman ratchet step happens on each direction change. This gives forward secrecy and break-in recovery -- even if an attacker compromises current keys, future messages become secure again after the next ratchet step.
 
-Both protocols run on top of the Noise-encrypted transport, giving you two independent encryption layers.
+Both protocols run on top of Noise-encrypted transport, so there are two independent encryption layers.
 
-## What Happens When You Connect
+## What happens when you connect
 
 Here's the full sequence when an agent comes online:
 
@@ -99,16 +99,16 @@ sequenceDiagram
     S->>V: Forwarded in real-time
 ```
 
-Key properties:
+Properties:
 - **Zero storage** -- the TTYA server keeps nothing. Messages are forwarded in memory and discarded.
 - **Approval required** -- visitors sit in a queue until the agent owner approves them
 - **Visitor privacy** -- IPs are hashed, no cookies beyond a session token, no analytics
 
 The TTYA server sees message content in transit (it's not E2E encrypted from the browser). This is acceptable when you self-host the relay. Future versions will add noise-over-websocket for true E2E.
 
-## Package Structure
+## Package structure
 
-The implementation is split into focused packages:
+The implementation is split across these packages:
 
 | Package | Role |
 |---------|------|

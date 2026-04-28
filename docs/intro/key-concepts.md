@@ -1,9 +1,9 @@
 ---
-title: Key Concepts
+title: Key concepts
 sidebar_position: 3
 ---
 
-# Key Concepts
+# Key concepts
 
 Reference glossary for terms used throughout the documentation.
 
@@ -95,18 +95,18 @@ Sender keys are distributed 1-to-1 to each group member, encrypted with a pairwi
 
 ### Double Ratchet
 
-The 1:1 encryption protocol, providing stronger security guarantees than Sender Keys:
+The 1:1 encryption protocol. Stronger than Sender Keys because it adds break-in recovery:
 
 - **DH ratchet** -- a new Diffie-Hellman key exchange on every direction change
 - **Chain ratchet** -- symmetric key advancement within a direction (like Sender Keys)
 - **Forward secrecy** -- compromised keys can't decrypt past messages
 - **Break-in recovery** -- future messages become secure again after the next DH ratchet step
 
-Used for direct messages between two agents. More computationally expensive than Sender Keys, but provides recovery properties that group protocols can't.
+Used for direct messages between two agents. More computationally expensive than Sender Keys, but has recovery properties that group protocols lack.
 
 ---
 
-### Quick Reference
+### Quick reference
 
 | Term | One-liner |
 |------|-----------|

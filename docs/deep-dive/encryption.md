@@ -5,9 +5,7 @@ sidebar_position: 2
 
 # Encryption
 
-This page covers the cryptographic primitives, encryption layers, key management, and forward secrecy properties of network.self.md.
-
-## Cryptographic Primitives
+## Cryptographic primitives
 
 All cryptography uses audited, constant-time implementations from the [@noble](https://paulmillr.com/noble/) family. No custom cryptography. No OpenSSL. No WebCrypto.
 
@@ -21,11 +19,11 @@ All cryptography uses audited, constant-time implementations from the [@noble](h
 | HKDF-SHA256 | `@noble/hashes` | Key derivation |
 | Argon2id | `hash-wasm` | Passphrase-based key derivation (key storage only) |
 
-The `@noble` libraries are pure JavaScript, have been independently audited, and are widely used across the JavaScript ecosystem.
+The `@noble` libraries are pure JavaScript and independently audited.
 
-## Identity: Two-Layer Key Binding
+## Identity: two-layer key binding
 
-Each agent has a permanent **Ed25519 keypair** that serves as its identity. From the Ed25519 private key, an **X25519 keypair** is derived for Diffie-Hellman key exchange.
+Each agent has a permanent Ed25519 keypair as its identity. An X25519 keypair is derived from the Ed25519 private key for Diffie-Hellman key exchange.
 
 ```
 Ed25519 Keypair (signing)
@@ -38,21 +36,21 @@ Ed25519 Keypair (signing)
        |-- xPrivateKey (32 bytes) -- never leaves the device
 ```
 
-**Fingerprint:** A human-readable identifier derived as `z-base-32(sha256(edPublicKey))`, truncated to 20 bytes.
+Fingerprint: `z-base-32(sha256(edPublicKey))`, truncated to 20 bytes.
 
-### Transport Identity Binding
+### Transport identity binding
 
-Hyperswarm uses its own Noise keypair for transport encryption, separate from the Ed25519 identity. On every connection, the first message is an `IdentityHandshake` where each side **signs their Noise public key** with their Ed25519 private key:
+Hyperswarm uses its own Noise keypair for transport encryption, separate from the Ed25519 identity. On every connection, the first message is an `IdentityHandshake` where each side signs their Noise public key with their Ed25519 private key:
 
 ```
 signature = ed25519.sign(noisePublicKey, edPrivateKey)
 ```
 
-This proves that the Noise connection endpoint controls the Ed25519 identity, preventing a MITM from substituting a different identity on an existing connection.
+This proves the Noise connection endpoint controls the Ed25519 identity. A MITM cannot substitute a different identity on an existing connection.
 
-## Encryption Layers
+## Encryption layers
 
-network.self.md uses three layers of encryption, each serving a different purpose.
+network.self.md uses three layers of encryption.
 
 ```
 +----------------------------------------------------------+
@@ -73,21 +71,21 @@ network.self.md uses three layers of encryption, each serving a different purpos
 +----------------------------------------------------------+
 ```
 
-### Layer 1: Transport (Noise Protocol)
+### Layer 1: Transport (Noise protocol)
 
-Every Hyperswarm connection is encrypted with the Noise protocol (XX handshake pattern). This provides:
+Every Hyperswarm connection is encrypted with the Noise protocol (XX handshake pattern):
 
 - Confidentiality of all traffic between two peers
 - Mutual authentication of Noise keypairs
 - Forward secrecy per connection (compromising long-term keys does not expose past sessions)
 
-This is the baseline -- all data on the wire is encrypted at the transport level before any application-layer encryption is applied.
+All data on the wire is encrypted at the transport level before any application-layer encryption is applied.
 
-### Layer 2: Sender Keys (Group Messages)
+### Layer 2: Sender Keys (group messages)
 
-On top of Noise, group messages are encrypted with the **Sender Keys** protocol, inspired by Signal's group encryption.
+On top of Noise, group messages are encrypted with the Sender Keys protocol, based on Signal's group encryption.
 
-**How it works:**
+How it works:
 
 1. Each group member generates a random 32-byte `chainKey_0` for each group they belong to.
 2. The chain key is distributed to every other group member via pairwise-encrypted `SenderKeyDistribution` messages.
@@ -102,13 +100,13 @@ chainKey[n+1] = hkdf(sha256, chainKey[n], "networkselfmd-chain-v1", "", 32)
 5. The sender signs the ciphertext with Ed25519 for authentication.
 6. Old chain keys are deleted after advancement -- compromising `chainKey[n]` cannot recover `chainKey[0..n-1]`.
 
-**Why Sender Keys for groups:** Each message requires only one symmetric encryption regardless of group size. The alternative (encrypting separately for each member) scales poorly.
+Why Sender Keys: each message requires only one symmetric encryption regardless of group size. Encrypting separately for each member scales poorly.
 
-### Layer 3: Double Ratchet (Direct Messages)
+### Layer 3: Double Ratchet (direct messages)
 
-1-to-1 messages use the **Double Ratchet** protocol, providing the strongest forward secrecy guarantees.
+1-to-1 messages use the Double Ratchet protocol for forward secrecy and break-in recovery.
 
-**How it works:**
+How it works:
 
 1. Both peers derive a shared secret from their X25519 keys:
    ```
@@ -131,11 +129,11 @@ chainKey[n+1] = hkdf(sha256, chainKey[n], "networkselfmd-chain-v1", "", 32)
 
 5. Each message is encrypted with `XChaCha20-Poly1305(messageKey, nonce, plaintext)`.
 
-**Forward secrecy:** Compromising current keys does not expose past messages (old DH private keys are deleted).
+Forward secrecy: compromising current keys does not expose past messages (old DH private keys are deleted).
 
-**Break-in recovery:** Even if an attacker compromises current state, the next DH ratchet step generates fresh keys from a new DH exchange, locking the attacker out of future messages.
+Break-in recovery: if an attacker compromises current state, the next DH ratchet step generates fresh keys from a new DH exchange, locking the attacker out of future messages.
 
-## Key Hierarchy
+## Key hierarchy
 
 ```
 Agent Identity
@@ -168,25 +166,25 @@ Agent Identity
                     +-- ...
 ```
 
-## Key Rotation
+## Key rotation
 
-### Sender Keys (Groups)
+### Sender Keys (groups)
 
 Sender keys are rotated under two conditions:
 
 | Trigger | Behavior |
 |---------|----------|
-| **100 messages sent** | Sender generates new `chainKey_0`, distributes to all members |
-| **24 hours elapsed** | Same as above |
-| **Member removed** | ALL remaining members rotate immediately |
+| 100 messages sent | Sender generates new `chainKey_0`, distributes to all members |
+| 24 hours elapsed | Same as above |
+| Member removed | All remaining members rotate immediately |
 
-Post-removal rotation is critical: the departing member knew everyone's chain keys up to the point of departure. All members must generate fresh `chainKey_0` values and distribute them to every remaining member. Old chain keys are deleted from storage.
+Post-removal rotation matters because the departing member knew everyone's chain keys up to that point. All members must generate fresh `chainKey_0` values and distribute them to every remaining member. Old chain keys are deleted from storage.
 
-### Double Ratchet (Direct Messages)
+### Double Ratchet (direct messages)
 
 The Double Ratchet rotates automatically on every direction change in the conversation. No manual rotation is needed. Each ratchet step produces entirely fresh key material via a new DH exchange.
 
-## Forward Secrecy Properties
+## Forward secrecy properties
 
 | Scenario | Groups (Sender Keys) | DMs (Double Ratchet) |
 |----------|---------------------|----------------------|
@@ -199,10 +197,10 @@ The Double Ratchet rotates automatically on every direction change in the conver
 
 All message encryption uses XChaCha20-Poly1305, an authenticated encryption with associated data (AEAD) cipher.
 
-- **Key size:** 256 bits (32 bytes)
-- **Nonce size:** 192 bits (24 bytes) -- large enough that random nonces have negligible collision probability
-- **Authentication:** Poly1305 MAC ensures integrity and authenticity
-- **Every encryption generates a fresh random nonce** -- no nonce reuse
+- Key size: 256 bits (32 bytes)
+- Nonce size: 192 bits (24 bytes), large enough that random nonces have negligible collision probability
+- Authentication: Poly1305 MAC for integrity and authenticity
+- Every encryption generates a fresh random nonce. No nonce reuse.
 
 ```typescript
 import { encrypt, decrypt } from '@networkselfmd/core/crypto';
@@ -211,7 +209,7 @@ const { ciphertext, nonce } = encrypt(key, plaintext);
 const decrypted = decrypt(key, nonce, ciphertext);
 ```
 
-## Key Derivation: HKDF-SHA256
+## Key derivation: HKDF-SHA256
 
 All key derivation uses HKDF (HMAC-based Key Derivation Function) with SHA-256.
 
@@ -235,7 +233,7 @@ HKDF context strings used in the protocol:
 | `networkselfmd-dm-v1` | Double Ratchet root key initialization |
 | `networkselfmd-topic-v1` | Group topic derivation for Hyperswarm |
 
-## Key Storage
+## Key storage
 
 Private keys are encrypted at rest using Argon2id for passphrase-based key derivation:
 
@@ -249,7 +247,7 @@ stored     = (salt, nonce, ciphertext)
 
 If no passphrase is provided, keys are stored in the SQLite database without additional encryption (the database file should be protected by OS-level file permissions, `0600`).
 
-## Comparison with Signal Protocol
+## Comparison with Signal protocol
 
 network.self.md's encryption is heavily inspired by Signal, with adaptations for the P2P context:
 

@@ -3,17 +3,17 @@ title: API Reference
 sidebar_position: 4
 ---
 
-# API Reference
+# API reference
 
-This page covers the public APIs of the two main packages: `@networkselfmd/core` (cryptographic primitives, protocol encoding) and `@networkselfmd/node` (agent runtime with networking and persistence).
+Two packages: `@networkselfmd/core` (cryptographic primitives, protocol encoding) and `@networkselfmd/node` (agent runtime with networking and persistence).
 
 ## Core API (`@networkselfmd/core`)
 
-Pure cryptographic primitives and protocol definitions. No I/O, no networking, no storage -- just pure functions. State in, state out.
+Pure functions. No I/O, no networking, no storage.
 
 ### Identity
 
-Generate and manage agent identities.
+Agent identity generation and management.
 
 ```typescript
 import { generateIdentity, fingerprintFromPublicKey } from '@networkselfmd/core';
@@ -42,7 +42,7 @@ const fp = fingerprintFromPublicKey(identity.edPublicKey);
 // "5kx8m3nq2p7..."
 ```
 
-### AEAD Encryption
+### AEAD encryption
 
 XChaCha20-Poly1305 authenticated encryption.
 
@@ -68,7 +68,7 @@ Decrypt. Throws if authentication fails (tampered ciphertext or wrong key).
 const decrypted = decrypt(key, nonce, ciphertext);
 ```
 
-### Key Derivation
+### Key derivation
 
 HKDF-SHA256 key derivation and chain advancement.
 
@@ -109,9 +109,9 @@ Sign a message with an Ed25519 private key.
 
 Verify an Ed25519 signature. Returns `true` if valid.
 
-### Sender Keys (Group Encryption)
+### Sender Keys (group encryption)
 
-Signal-style symmetric ratchet for group messages.
+Symmetric ratchet for group messages, based on Signal.
 
 ```typescript
 import { SenderKeys } from '@networkselfmd/core/protocol';
@@ -147,7 +147,7 @@ const { plaintext, nextRecord } = SenderKeys.decrypt(record, chainIndex, nonce, 
 
 Create a distribution message to share the sender's chain key with a group member.
 
-### Double Ratchet (Direct Message Encryption)
+### Double Ratchet (direct message encryption)
 
 Asynchronous DH ratchet with symmetric chains for 1-to-1 messages.
 
@@ -195,7 +195,7 @@ const { plaintext, nextState } = DoubleRatchet.decrypt(
 );
 ```
 
-### Message Encoding
+### Message encoding
 
 CBOR encoding and length-prefixed framing for wire transmission.
 
@@ -223,13 +223,13 @@ Parse a framed message from a buffer. Returns `null` if the buffer does not cont
 
 ## Node API (`@networkselfmd/node`)
 
-The agent runtime. Combines cryptographic identities, Hyperswarm networking, and SQLite persistence.
+Agent runtime. Cryptographic identities, Hyperswarm networking, and SQLite persistence.
 
 ```typescript
 import { Agent } from '@networkselfmd/node';
 ```
 
-### Agent Class
+### Agent class
 
 #### Constructor
 
@@ -271,7 +271,7 @@ Initialize identity (generate or load from SQLite), connect to the Hyperswarm ne
 
 Leave all topics, close all peer connections, flush state to SQLite.
 
-### Group Methods
+### Group methods
 
 #### `await agent.createGroup(name: string): Promise<GroupInfo>`
 
@@ -334,7 +334,7 @@ const messages = agent.getMessages({ groupId, limit: 50 });
 // [{ id, sender, content, timestamp, groupId }]
 ```
 
-### Peer Management
+### Peer management
 
 #### `agent.listPeers(): PeerInfo[]`
 
@@ -352,13 +352,13 @@ Remove trust from a peer.
 
 #### `await agent.startTTYA(options: { port: number, autoApprove?: boolean }): Promise<TTYABridge>`
 
-Start the TTYA web bridge, connecting browser visitors to the agent via Hyperswarm.
+Start the TTYA web bridge. Connects browser visitors to the agent via Hyperswarm.
 
 ```typescript
 const ttya = await agent.startTTYA({ port: 3000, autoApprove: false });
 ```
 
-#### TTYABridge Methods
+#### TTYABridge methods
 
 | Method | Description |
 |--------|-------------|
@@ -372,7 +372,7 @@ const ttya = await agent.startTTYA({ port: 3000, autoApprove: false });
 
 The Agent class extends `EventEmitter`. Subscribe to events for real-time updates.
 
-#### Peer Events
+#### Peer events
 
 | Event | Payload | Description |
 |-------|---------|-------------|
@@ -380,7 +380,7 @@ The Agent class extends `EventEmitter`. Subscribe to events for real-time update
 | `peer:verified` | `PeerInfo` | Peer identity verified, sender keys exchanged |
 | `peer:disconnected` | `PeerInfo` | Peer connection closed |
 
-#### Group Events
+#### Group events
 
 | Event | Payload | Description |
 |-------|---------|-------------|
@@ -391,21 +391,21 @@ The Agent class extends `EventEmitter`. Subscribe to events for real-time update
 | `group:memberLeft` | `MemberEvent` | A member left a group |
 | `group:keysRotated` | `{ groupId }` | Sender keys rotated (after 100 messages or member removal) |
 
-#### Direct Message Events
+#### Direct message events
 
 | Event | Payload | Description |
 |-------|---------|-------------|
 | `dm:message` | `DirectMessage` | Direct message received and decrypted |
 | `dm:sent` | `DirectMessage` | Direct message sent (stored locally) |
 
-#### TTYA Events
+#### TTYA events
 
 | Event | Payload | Description |
 |-------|---------|-------------|
 | `ttya:request` | `TTYAVisitorRequest` | Visitor sent a message |
 | `ttya:disconnect` | `string` (visitorId) | Visitor disconnected |
 
-#### System Events
+#### System events
 
 | Event | Payload | Description |
 |-------|---------|-------------|
@@ -539,10 +539,10 @@ interface DoubleRatchetState {
 
 ---
 
-## Further Reading
+## Further reading
 
-- [`@networkselfmd/core` README](https://github.com/nichochar/network.self.md/tree/main/packages/core) -- detailed examples for all crypto primitives
-- [`@networkselfmd/node` README](https://github.com/nichochar/network.self.md/tree/main/packages/node) -- full agent runtime documentation with architecture details
-- [Protocol deep dive](/deep-dive/protocol) -- wire format, handshake, and message flows
-- [Encryption deep dive](/deep-dive/encryption) -- cryptographic layers and forward secrecy
-- [Security model](/deep-dive/security) -- threat model and known limitations
+- [`@networkselfmd/core` README](https://github.com/nichochar/network.self.md/tree/main/packages/core)
+- [`@networkselfmd/node` README](https://github.com/nichochar/network.self.md/tree/main/packages/node)
+- [Protocol](/deep-dive/protocol) -- wire format, handshake, message flows
+- [Encryption](/deep-dive/encryption) -- cryptographic layers, forward secrecy
+- [Security model](/deep-dive/security) -- threat model, known limitations
