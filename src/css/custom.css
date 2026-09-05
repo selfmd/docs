@@ -1,151 +1,114 @@
-/**
- * Theme based on network.self.md dashboard.
- * Dark-first, monospace, green/purple/cyan accents.
- */
-
+/* Self-hosted variable fonts, SIL Open Font License. */
+@font-face{font-family:'Anybody';font-style:normal;font-weight:100 900;font-display:swap;src:url('/fonts/anybody.woff2') format('woff2');}
+@font-face{font-family:'Bricolage Grotesque';font-style:normal;font-weight:100 900;font-display:swap;src:url('/fonts/bricolage-grotesque.woff2') format('woff2');}
+@font-face{font-family:'Inter';font-style:normal;font-weight:100 900;font-display:swap;src:url('/fonts/inter.woff2') format('woff2');}
+@font-face{font-family:'JetBrains Mono';font-style:normal;font-weight:100 900;font-display:swap;src:url('/fonts/jetbrains-mono.woff2') format('woff2');}
+/* Network implementation handoff v2.2: paper, carbon, pink. */
 :root {
-  --ifm-color-primary: #41e98d;
-  --ifm-color-primary-dark: #2be07f;
-  --ifm-color-primary-darker: #22d475;
-  --ifm-color-primary-darkest: #1bae60;
-  --ifm-color-primary-light: #5aed9d;
-  --ifm-color-primary-lighter: #6df0a8;
-  --ifm-color-primary-lightest: #97f5c1;
-  --ifm-code-font-size: 95%;
-  --ifm-font-family-base: 'Fira Code', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  --ifm-font-family-monospace: 'Fira Code', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  --ifm-heading-font-weight: 600;
-  --docusaurus-highlighted-code-line-bg: rgba(65, 233, 141, 0.1);
+  --network-paper: #f8f6f0;
+  --network-ink: #0c0d0e;
+  --network-pink: #ff1484;
+  --network-warm: #ebe7dd;
+  --network-grey: #66655f;
+  --network-line: #c8c5bd;
+  --ifm-color-primary: #ad0052;
+  --ifm-color-primary-dark: #990049;
+  --ifm-color-primary-darker: #870040;
+  --ifm-color-primary-darkest: #650030;
+  --ifm-color-primary-light: #c7005e;
+  --ifm-color-primary-lighter: #df006a;
+  --ifm-color-primary-lightest: #ff1484;
+  --ifm-font-family-base: 'Inter', Arial, sans-serif;
+  --ifm-font-family-monospace: 'JetBrains Mono', ui-monospace, monospace;
+  --ifm-heading-font-family: 'Bricolage Grotesque', 'Inter', Arial, sans-serif;
+  --ifm-heading-font-weight: 800;
+  --ifm-code-font-size: 85%;
+  --ifm-global-radius: 2px;
+  --ifm-code-border-radius: 2px;
+  --ifm-button-border-radius: 2px;
+  --ifm-card-border-radius: 2px;
+  --ifm-global-shadow-lw: 3px 3px 0 var(--network-ink);
+  --ifm-global-shadow-md: 4px 4px 0 var(--network-ink);
+  --ifm-global-shadow-tl: 4px 4px 0 var(--network-ink);
+  --ifm-background-color: var(--network-paper);
+  --ifm-background-surface-color: var(--network-warm);
+  --ifm-font-color-base: var(--network-ink);
+  --ifm-font-color-secondary: var(--network-grey);
+  --ifm-navbar-background-color: var(--network-paper);
+  --ifm-footer-background-color: var(--network-ink);
+  --ifm-toc-border-color: var(--network-line);
+  --ifm-color-emphasis-100: var(--network-warm);
+  --ifm-color-emphasis-200: var(--network-line);
+  --ifm-color-emphasis-300: var(--network-line);
+  --ifm-menu-color: var(--network-grey);
+  --ifm-menu-color-active: var(--network-ink);
+  --ifm-menu-color-background-active: var(--network-warm);
+  --ifm-menu-color-background-hover: var(--network-warm);
+  --ifm-table-border-color: var(--network-line);
+  --ifm-table-stripe-background: var(--network-warm);
+  --docusaurus-highlighted-code-line-bg: #ff14841a;
+  color-scheme: light;
 }
 
 [data-theme='dark'] {
-  --ifm-background-color: #0b0d10;
-  --ifm-background-surface-color: #0f0f12;
-  --ifm-color-primary: #41e98d;
-  --ifm-color-primary-dark: #2be07f;
-  --ifm-color-primary-darker: #22d475;
-  --ifm-color-primary-darkest: #1bae60;
-  --ifm-color-primary-light: #5aed9d;
-  --ifm-color-primary-lighter: #6df0a8;
-  --ifm-color-primary-lightest: #97f5c1;
-  --ifm-font-color-base: rgba(248, 252, 255, 0.92);
-  --ifm-font-color-secondary: rgba(214, 226, 232, 0.58);
-  --ifm-navbar-background-color: rgba(15, 15, 18, 0.86);
-  --ifm-footer-background-color: rgba(15, 15, 18, 0.96);
-  --ifm-toc-border-color: rgba(255, 255, 255, 0.075);
-  --ifm-color-emphasis-300: rgba(255, 255, 255, 0.075);
-  --docusaurus-highlighted-code-line-bg: rgba(65, 233, 141, 0.15);
-}
-
-/* Force dark as default — matches dashboard */
-html {
+  --ifm-color-primary: #ff75b6;
+  --ifm-color-primary-dark: #ff4ba1;
+  --ifm-color-primary-darker: #ff3596;
+  --ifm-color-primary-darkest: #ff1484;
+  --ifm-color-primary-light: #ff9ecb;
+  --ifm-color-primary-lighter: #ffb4d6;
+  --ifm-color-primary-lightest: #ffdeef;
+  --ifm-background-color: var(--network-ink);
+  --ifm-background-surface-color: #1a1b1b;
+  --ifm-font-color-base: var(--network-paper);
+  --ifm-font-color-secondary: #b8b5ad;
+  --ifm-navbar-background-color: var(--network-ink);
+  --ifm-toc-border-color: #41413d;
+  --ifm-color-emphasis-100: #232421;
+  --ifm-color-emphasis-200: #41413d;
+  --ifm-color-emphasis-300: #41413d;
+  --ifm-menu-color: #b8b5ad;
+  --ifm-menu-color-active: var(--network-paper);
+  --ifm-menu-color-background-active: #292820;
+  --ifm-menu-color-background-hover: #232421;
+  --ifm-table-border-color: #41413d;
+  --ifm-table-stripe-background: #1a1b1b;
   color-scheme: dark;
 }
 
-/* Navbar backdrop blur like dashboard panels */
-[data-theme='dark'] .navbar {
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.075);
+body { -webkit-font-smoothing: antialiased; }
+::selection { background: var(--network-pink); color: var(--network-ink); }
+h1, h2, h3 { text-wrap: balance; }
+h1 { font-family: 'Anybody', 'Arial Black', sans-serif; font-weight: 900; line-height: 1.05; }
+p { text-wrap: pretty; }
+a, button { touch-action: manipulation; }
+a:focus-visible, button:focus-visible, input:focus-visible, summary:focus-visible { outline: 3px solid var(--network-pink); outline-offset: 4px; }
+.navbar { border-bottom: 1px solid var(--ifm-toc-border-color); box-shadow: none; min-height: 76px; }
+.navbar__title { font-family: 'Anybody', 'Arial Black', sans-serif; font-weight: 900; }
+.navbar__link, .menu__link, .table-of-contents, .breadcrumbs, .pagination-nav__sublabel { font-family: var(--ifm-font-family-monospace); font-size: 12px; }
+.menu__link { border-radius: 2px; padding-top: 10px; padding-bottom: 10px; }
+.menu__link--active:not(.menu__link--sublist) { box-shadow: inset 3px 0 0 var(--network-pink); }
+.markdown { line-height: 1.8; }
+.markdown > h2 { margin-top: 3rem; border-top: 1px solid var(--ifm-toc-border-color); padding-top: 2rem; }
+.markdown a { text-decoration: underline; text-underline-offset: 3px; }
+.markdown code { border: 1px solid var(--ifm-toc-border-color); background: var(--ifm-background-surface-color); border-radius: 2px; color: var(--ifm-font-color-base); overflow-wrap: anywhere; }
+.prism-code { border: 1px solid var(--ifm-toc-border-color); border-radius: 2px; }
+.prism-code code { border: 0; background: transparent; color: inherit; }
+.theme-code-block { box-shadow: none !important; }
+table { border-collapse: collapse; font-variant-numeric: tabular-nums; }
+table th { background: var(--ifm-background-surface-color); color: var(--ifm-font-color-base); font-family: var(--ifm-font-family-monospace); font-size: 12px; }
+.pagination-nav__link { border: 1px solid var(--ifm-font-color-base); border-radius: 2px; }
+.pagination-nav__link:hover { border-color: var(--ifm-font-color-base); box-shadow: 3px 3px 0 var(--network-pink); }
+.alert { border-radius: 2px; box-shadow: none; --ifm-alert-border-color: var(--network-pink); --ifm-alert-background-color: var(--ifm-background-surface-color); --ifm-alert-foreground-color: var(--ifm-font-color-base); }
+.footer--dark { background: var(--network-ink); color: var(--network-paper); border-top: 1px solid #41413d; }
+.footer__title { font-family: var(--ifm-heading-font-family); }
+.footer__link-item { color: #c8c5bd; }
+.footer__link-item:hover { color: var(--network-pink); }
+@media (max-width: 760px) {
+  h1 { font-size: 2.4rem; overflow-wrap: anywhere; }
+  .navbar { min-height: 64px; }
+  .pagination-nav { grid-template-columns: minmax(0, 1fr); }
 }
-
-/* Sidebar styling */
-[data-theme='dark'] .menu {
-  background: transparent;
-}
-
-[data-theme='dark'] .menu__link--active:not(.menu__link--sublist) {
-  color: #41e98d;
-}
-
-[data-theme='dark'] .menu__link:hover {
-  color: #41e98d;
-}
-
-/* Code blocks — dashboard-like */
-[data-theme='dark'] .prism-code {
-  background-color: rgba(15, 15, 18, 0.86) !important;
-  border: 1px solid rgba(255, 255, 255, 0.075);
-  border-radius: 10px;
-}
-
-/* Inline code */
-[data-theme='dark'] code {
-  background-color: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.075);
-  border-radius: 4px;
-  color: #b4a0ff;
-}
-
-/* Links — green accent */
-[data-theme='dark'] a {
-  color: #41e98d;
-}
-
-[data-theme='dark'] a:hover {
-  color: #6df0a8;
-}
-
-/* Table styling */
-[data-theme='dark'] table {
-  border-collapse: collapse;
-}
-
-[data-theme='dark'] table th {
-  background-color: rgba(15, 15, 18, 0.86);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.14);
-  color: rgba(214, 226, 232, 0.58);
-  font-size: 0.85rem;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
-[data-theme='dark'] table td {
-  border-bottom: 1px solid rgba(255, 255, 255, 0.075);
-}
-
-/* Footer — dashboard panel style */
-[data-theme='dark'] .footer--dark {
-  background-color: rgba(15, 15, 18, 0.96);
-  border-top: 1px solid rgba(255, 255, 255, 0.075);
-}
-
-/* Admonitions / callouts — use accent colors */
-[data-theme='dark'] .alert--info {
-  --ifm-alert-background-color: rgba(0, 188, 212, 0.08);
-  --ifm-alert-border-color: #00bcd4;
-}
-
-[data-theme='dark'] .alert--warning {
-  --ifm-alert-background-color: rgba(254, 188, 46, 0.08);
-  --ifm-alert-border-color: #febc2e;
-}
-
-[data-theme='dark'] .alert--danger {
-  --ifm-alert-background-color: rgba(255, 95, 87, 0.08);
-  --ifm-alert-border-color: #ff5f57;
-}
-
-[data-theme='dark'] .alert--success {
-  --ifm-alert-background-color: rgba(65, 233, 141, 0.08);
-  --ifm-alert-border-color: #41e98d;
-}
-
-/* Scrollbar — subtle */
-[data-theme='dark'] ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-
-[data-theme='dark'] ::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-[data-theme='dark'] ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.14);
-  border-radius: 3px;
-}
-
-[data-theme='dark'] ::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.24);
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }
