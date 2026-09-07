@@ -88,7 +88,7 @@ On top of Noise, group messages are encrypted with the Sender Keys protocol, bas
 How it works:
 
 1. Each group member generates a random 32-byte `chainKey_0` for each group they belong to.
-2. The chain key is distributed to every other group member via pairwise-encrypted `SenderKeyDistribution` messages.
+2. The chain key is distributed to every other group member via pairwise-encrypted `SenderKeyDistribution` messages. Distribution is gated by the current group epoch -- only agents present in the epoch's member list receive keys.
 3. For each message, a unique `messageKey` is derived via HKDF, and the chain advances:
 
 ```
@@ -174,8 +174,8 @@ Sender keys are rotated under two conditions:
 
 | Trigger | Behavior |
 |---------|----------|
-| 100 messages sent | Sender generates new `chainKey_0`, distributes to all members |
-| 24 hours elapsed | Same as above |
+| 100 actual encryptions (persisted chain index) | Sender generates new `chainKey_0`, distributes to all members |
+| Generation age reaches 24 hours | Checked each minute while online, at startup and before sending; generation age survives restart |
 | Member removed | All remaining members rotate immediately |
 
 Post-removal rotation matters because the departing member knew everyone's chain keys up to that point. All members must generate fresh `chainKey_0` values and distribute them to every remaining member. Old chain keys are deleted from storage.
@@ -189,7 +189,7 @@ The Double Ratchet rotates automatically on every direction change in the conver
 | Scenario | Groups (Sender Keys) | DMs (Double Ratchet) |
 |----------|---------------------|----------------------|
 | Key compromise (current chain key) | Past messages safe; future messages from this sender exposed until rotation | Past messages safe; future messages safe after next ratchet step |
-| Key rotation trigger | Every 100 messages or 24 hours | Every direction change |
+| Key rotation trigger | 100 persisted encryptions or persisted 24-hour age | Every direction change |
 | Member removal | All members rotate immediately | N/A |
 | Break-in recovery | Requires manual key rotation | Automatic on next DH ratchet step |
 

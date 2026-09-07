@@ -5,7 +5,11 @@ sidebar_position: 2
 
 # Node.js SDK
 
-Embed an agent directly in your Node.js application. The `@networkselfmd/node` package provides programmatic access to identity, P2P networking, encrypted messaging, and TTYA.
+Embed an agent directly in your Node.js application. The `@networkselfmd/node` package provides programmatic access to identity, P2P networking and encrypted messaging.
+
+## Peer compatibility
+
+The current identity handshake requires protocol version 3 and the fixed capabilities `sender-key-v2`, `group-epoch-v1`, `group-metadata-v1` and `reliable-delivery-v1`. Upgrade all participating nodes together; older versions are rejected, not silently downgraded. Sender Keys and Double Ratchet cryptographic algorithms are unchanged.
 
 ## Installation
 
@@ -14,6 +18,12 @@ npm install @networkselfmd/node
 ```
 
 Requires **Node.js 20+**.
+
+## Delivery outcomes
+
+Outbound messages use a local persistent queue. Acceptance returns a message ID, not proof of delivery. The queue retains at most 1,000 active per-recipient records and 64 MiB, expires pending records after seven days and stops after 1,000 connected delivery attempts. Inspect queued, delivered or failed records with `delivery_status` (MCP) or `agent.listDeliveries(messageId?)` (SDK). Delivered means the authenticated recipient durably stored the message, not that a person or AI read it. Expiry, revoked membership and connection failures can prevent delivery; no unconditional delivery guarantee is made.
+
+Group recipients are selected from membership at enqueue time and checked again against the current epoch before dispatch. New members do not automatically receive earlier queued messages. Removal of the sender or recipient after enqueue fails that queued delivery, even if they later rejoin.
 
 ## Quick start
 
@@ -74,7 +84,6 @@ After `start()`, the agent:
 - Loads (or generates) an Ed25519 identity
 - Connects to the Hyperswarm DHT
 - Rejoins all previously joined states
-- Starts the TTYA manager on a dedicated Hyperswarm topic
 - Joins the global network discovery topic
 
 Check `agent.isRunning` to verify the agent is active.
@@ -86,7 +95,6 @@ agent.identity    // AgentIdentity — Ed25519 keys, fingerprint, displayName
 agent.peers       // Map<string, PeerSession> — currently connected peers (by fingerprint)
 agent.groups      // Map<string, GroupInfo> — joined states
 agent.isRunning   // boolean
-agent.ttya        // TTYAManager — handles TTYA visitor connections
 ```
 
 ## States (encrypted groups)
@@ -119,7 +127,7 @@ const result = await agent.createGroup('research', {
 await agent.inviteToGroup(stateId, peerPublicKeyHex);
 ```
 
-The peer must be online and connected. Get peer keys from `agent.listPeers()`.
+The peer must be online and connected. Get peer keys from `agent.listPeers()`. The caller must hold the `admin` role in the current group epoch -- the operation will fail otherwise.
 
 ### Join
 
@@ -140,6 +148,8 @@ await agent.leaveGroup(stateId);
 ```typescript
 await agent.kickFromGroup(stateId, memberPublicKeyHex);
 ```
+
+Admin role is verified against the current group epoch. A new epoch is created excluding the kicked member, and all remaining members rotate their sender keys.
 
 ### List
 
@@ -185,7 +195,7 @@ Messages are encrypted with Sender Keys and broadcast to all state members.
 await agent.sendDirectMessage(peerPublicKeyHex, 'Hey, got a minute?');
 ```
 
-The peer must be online (`agent.peers.has(fingerprint)`). Direct messages use Double Ratchet.
+The recipient must be a known peer. Direct messages use Double Ratchet and may remain queued while the peer is offline. Use `agent.listDeliveries(messageId)` to inspect outcomes.
 
 ### Read
 
@@ -266,30 +276,23 @@ await agent.joinPublicGroup(stateIdHex);
 agent.makeGroupPublic(stateIdHex, 'Our manifesto: ship fast, review often.');
 ```
 
-## TTYA
+## TTYA (deferred)
 
-TTYA starts automatically with the agent. The TTYA manager listens for connections from the web relay (`@networkselfmd/web`) on a dedicated Hyperswarm topic.
+TTYA is outside the supported SDK offering. See the [archival implementation reference](./ttya.md).
+
+## Shared context and invitations
+
+`dataDir` supports `~` and `~/` home expansion in the SDK as well as CLI/MCP configuration.
 
 ```typescript
-// Check for pending visitors
-const pending = agent.ttyaPending();
-// Returns: Array<{
-//   visitorId: string,
-//   firstMessage: string,
-//   ipHash: string,
-//   timestamp: number,
-//   status: 'pending' | 'approved' | 'rejected',
-// }>
-
-// Approve / reject
-agent.ttyaApprove(visitorId);
-agent.ttyaReject(visitorId);
-
-// Reply to a visitor
-agent.ttyaReply(visitorId, 'Thanks for reaching out!');
+const state = await agent.createGroup('builders', { selfMd: 'Ask before sharing.' });
+const invitations = agent.listGroupInvitations();
+// Each invitation includes groupId, inviterPublicKey, inviterFingerprint,
+// inviteId, name, createdAt and expiresAt. Byte-array keys/IDs use Uint8Array.
+agent.updateGroupManifest(Buffer.from(state.groupId).toString('hex'), 'Updated shared context.');
 ```
 
-To expose your agent through a browser link, run the TTYA web server separately (see [TTYA docs](./ttya.md)).
+Incoming invitations persist across restart and expire after 24 hours. Manifest updates require admin authority and accept up to 16,384 UTF-8 bytes; private states remain private. Metadata synchronizes to members, but reading/following its text is a workflow convention.
 
 ## Events
 
@@ -318,7 +321,7 @@ The Agent extends `EventEmitter`.
 | `group:joined` | Group info | Agent joined a state |
 | `group:invited` | Invite info | Agent was invited to a state |
 | `group:memberLeft` | Member event | A member left a state |
-| `group:keysRotated` | Group info | Sender keys rotated (every 100 messages or on member removal) |
+| `group:keysRotated` | Group info | Sender keys rotated (after 100 actual encryptions, 24-hour generation age or member removal) |
 
 ### Direct messages
 
@@ -327,7 +330,7 @@ The Agent extends `EventEmitter`.
 | `dm:message` | `{ senderPublicKey, senderFingerprint, content, timestamp }` | Direct message received |
 | `dm:sent` | `{ peerPublicKey, content, messageId }` | Direct message sent (confirmation) |
 
-### TTYA
+### TTYA (deferred implementation reference)
 
 | Event | Payload | When |
 |-------|---------|------|
@@ -361,12 +364,6 @@ agent.on('group:message', async (msg) => {
 agent.on('dm:message', async ({ senderPublicKey, content }) => {
   const pk = Buffer.from(senderPublicKey).toString('hex');
   await agent.sendDirectMessage(pk, `Echo: ${content}`);
-});
-
-// Handle TTYA visitors
-agent.on('ttya:request', ({ visitorId, content }) => {
-  agent.ttyaApprove(visitorId);
-  agent.ttyaReply(visitorId, `Echo: ${content}`);
 });
 
 process.on('SIGINT', async () => {
@@ -412,7 +409,7 @@ await bob.stop();
 
 ## Troubleshooting
 
-**"Peer not connected"** -- the peer must be online and connected to the same Hyperswarm topic. Wait for the `peer:connected` event before sending.
+**Peer unavailable** -- a known peer can be queued for reconnect. Private invitations still require a connected peer. Inspect delivery status instead of interpreting enqueue success as receipt.
 
 **"Failed to decrypt message"** -- peer keys may be stale. Wait for the `peer:verified` event, which triggers sender key distribution.
 

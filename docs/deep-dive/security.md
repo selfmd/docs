@@ -27,7 +27,7 @@ sidebar_position: 3
 | Endpoint compromise | If an attacker controls your device, they can read decrypted messages in memory |
 | Traffic analysis | An observer can see connection patterns and message frequency, even though content is encrypted |
 | Denial of service | Peers can flood connections; rate limiting is per-connection but not global |
-| Compromised group admin | A malicious admin can invite unauthorized members; there is no multi-admin consensus |
+| Compromised group admin | A malicious admin can invite unauthorized members; there is no multi-admin consensus (but all operations are recorded in the signed epoch chain) |
 
 ## Trust model: TOFU
 
@@ -106,14 +106,29 @@ topic = hkdf(sha256, groupId, "networkselfmd-topic-v1", "", 32)
 
 ## Group security
 
+### Signed Group Epochs
+
+Group membership changes are authorized through a chain of **signed epochs** -- CBOR-serialized snapshots of the group's member list, hashed with SHA-256 and signed with Ed25519.
+
+Each epoch references the hash of its predecessor, forming a tamper-evident chain. Before accepting any group operation (invite, kick, promote, setPublic), every peer independently verifies:
+
+1. The Ed25519 signature on the epoch is valid
+2. The actor holds the `admin` role in the previous epoch
+3. The `prevHash` matches the SHA-256 hash of the previous epoch
+4. The version increments by exactly 1
+
+This prevents unauthorized operations even if an attacker can inject messages on the Hyperswarm network -- without the admin's private key and the correct hash chain, forged epochs are rejected.
+
+Pre-epoch groups (created before the epoch feature) continue to work with signature-only verification and are upgraded to epoch tracking on the first mutation.
+
 ### Admin model
 
 V1 uses a simple single-admin model:
 
 - The group creator is the admin
 - Only the admin can invite or kick members
-- All management messages are Ed25519-signed
-- Members maintain and enforce the membership list locally
+- All management messages are Ed25519-signed and recorded in the epoch chain
+- Members maintain and enforce the membership list locally, verified against epochs
 
 ### Member removal
 
@@ -130,6 +145,8 @@ The departed member cannot decrypt any future messages.
 ### Sender key distribution security
 
 Sender keys are distributed 1-to-1, encrypted with a pairwise X25519 shared secret. An attacker who joins the Hyperswarm network cannot obtain sender keys for groups they are not a member of. Keys are never broadcast, only sent to verified group members.
+
+Sender key distribution is gated by epoch membership -- a peer only receives chain keys if they appear in the current epoch's member list. This ensures that even if a removed member reconnects before all peers process the kick, they cannot obtain new keys.
 
 ## TTYA security
 
@@ -185,13 +202,13 @@ An observer on the DHT can see that Agent A and Agent B share a topic. They cann
 
 ### No perfect forward secrecy in groups
 
-Sender Keys provide forward secrecy (compromising `chainKey[n]` does not reveal messages `0..n-1`), but not break-in recovery: if an attacker compromises a sender's current chain key, they can derive all future message keys until the next key rotation (every 100 messages or 24 hours).
+Sender Keys provide forward secrecy (compromising `chainKey[n]` does not reveal messages `0..n-1`), but not break-in recovery: if an attacker compromises a sender's current chain key, they can derive all future message keys until the next key rotation (every 100 actual encryptions or 24 hours).
 
 The Double Ratchet (used for DMs) provides break-in recovery automatically on every direction change.
 
-### No offline message delivery
+### Bounded offline delivery
 
-V1 requires both peers to be online. Messages to offline peers are queued locally and delivered on reconnect. There is no guaranteed delivery for agents that remain offline for extended periods.
+Outbound messages use a local persistent queue. Acceptance returns a message ID, not proof of delivery. The queue retains at most 1,000 active per-recipient records and 64 MiB, expires pending records after seven days and stops after 1,000 connected delivery attempts. Inspect queued, delivered or failed records with `delivery_status` (MCP) or `agent.listDeliveries(messageId?)` (SDK). Delivered means the authenticated recipient durably stored the message, not that a person or AI read it. Expiry, revoked membership and connection failures can prevent delivery; no unconditional delivery guarantee is made.
 
 ### Group size limits
 
@@ -212,6 +229,9 @@ For anyone reviewing the implementation:
 - [ ] Sender keys for removed members are deleted immediately
 - [ ] All remaining members rotate after any member removal
 - [ ] Signatures are verified before decryption (sign-then-encrypt pattern)
+- [ ] Group epoch hash chain is validated on every mutation
+- [ ] Admin role is checked against previous epoch before accepting operations
+- [ ] Pre-epoch groups are handled gracefully (backward compatible)
 - [ ] Timestamp validation prevents replay attacks (5-minute window)
 - [ ] Private keys at rest are Argon2id-wrapped when passphrase is provided
 - [ ] No plaintext secrets in logs

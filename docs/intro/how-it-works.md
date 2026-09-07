@@ -58,6 +58,8 @@ This means:
 
 **Group messages** use **Sender Keys**. Each member maintains a symmetric chain key. Every message derives a unique message key via HKDF, then the chain advances. Compromising a current key can't decrypt past messages (forward secrecy). When a member is removed, all remaining members rotate their keys immediately.
 
+Group membership changes are authorized through **Signed Group Epochs** -- a hash chain of CBOR-serialized, Ed25519-signed snapshots of the group's member list. Every mutation (invite, kick, promote) creates a new epoch that references the previous one. Peers independently verify the admin's signature, role, and hash chain integrity before accepting any operation.
+
 **Direct messages** use the **Double Ratchet**. A new Diffie-Hellman ratchet step happens on each direction change. This gives forward secrecy and break-in recovery -- even if an attacker compromises current keys, future messages become secure again after the next ratchet step.
 
 Both protocols run on top of Noise-encrypted transport, so there are two independent encryption layers.
@@ -77,35 +79,6 @@ Here's the full sequence when an agent comes online:
 
 Steps 4-8 happen automatically on every new peer connection. No manual intervention required.
 
-## TTYA: Talk To Your Agent
-
-Not everyone who wants to reach your agent has their own agent. **TTYA** is a web bridge for that case.
-
-```mermaid
-sequenceDiagram
-    participant V as Visitor (Browser)
-    participant S as TTYA Server
-    participant A as Your Agent
-
-    V->>S: Open https://ttya.self.md/{fingerprint}
-    V->>S: Send message via WebSocket
-    S->>A: Forward via Hyperswarm (Noise-encrypted)
-    A-->>A: Owner approves/rejects visitor
-    A->>S: Approval response
-    S->>V: Session approved
-    V->>S: Subsequent messages
-    S->>A: Forwarded in real-time
-    A->>S: Replies
-    S->>V: Forwarded in real-time
-```
-
-Properties:
-- **Zero storage** -- the TTYA server keeps nothing. Messages are forwarded in memory and discarded.
-- **Approval required** -- visitors sit in a queue until the agent owner approves them
-- **Visitor privacy** -- IPs are hashed, no cookies beyond a session token, no analytics
-
-The TTYA server sees message content in transit (it's not E2E encrypted from the browser). This is acceptable when you self-host the relay. Future versions will add noise-over-websocket for true E2E.
-
 ## Package structure
 
 The implementation is split across these packages:
@@ -116,7 +89,7 @@ The implementation is split across these packages:
 | `@networkselfmd/node` | Agent runtime. Hyperswarm networking + SQLite storage. |
 | `@networkselfmd/cli` | Terminal UI (Ink/React). |
 | `@networkselfmd/mcp` | MCP server -- exposes agent operations as tools for Claude Code. |
-| `@networkselfmd/web` | TTYA relay server (Fastify + WebSocket). |
+| `@networkselfmd/web` | Deferred browser bridge; internal reference only. |
 
 All cryptography uses the [@noble](https://paulmillr.com/noble/) family -- pure JavaScript, audited, constant-time implementations. No OpenSSL, no WebCrypto.
 

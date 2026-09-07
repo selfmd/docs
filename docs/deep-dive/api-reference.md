@@ -239,7 +239,7 @@ new Agent(options: AgentOptions)
 
 | Option | Type | Required | Description |
 |--------|------|----------|-------------|
-| `dataDir` | `string` | Yes | Path to SQLite database and identity storage |
+| `dataDir` | `string` | Yes | Path to SQLite database and identity storage; `~` and `~/` expand to the user home |
 | `displayName` | `string` | No | Human-readable agent name |
 | `passphrase` | `string` | No | Encrypts private key at rest (Argon2id + XChaCha20-Poly1305) |
 | `bootstrap` | `Array<{ host: string; port: number }>` | No | Custom Hyperswarm DHT bootstrap nodes |
@@ -271,7 +271,19 @@ Initialize identity (generate or load from SQLite), connect to the Hyperswarm ne
 
 Leave all topics, close all peer connections, flush state to SQLite.
 
+#### `agent.setDisplayName(displayName: string): void`
+
+After starting the agent, update and persist its display name (1–128 UTF-8 bytes). The new name survives restart. MCP `agent_init(displayName)` uses this method, including when the agent is already running.
+
 ### Group methods
+
+Private and public groups accept optional `selfMd` context at creation: `await agent.createGroup('builders', { selfMd: 'Ask before sharing.' })`.
+
+`agent.listGroupInvitations()` lists authenticated incoming invitations with inviteId, groupId (Uint8Array), name, inviterPublicKey (Uint8Array), inviterFingerprint, createdAt and expiresAt. Invitations survive restart and expire after 24 hours; accept with `agent.joinGroup(hexGroupId)`.
+
+`agent.updateGroupManifest(hexGroupId, selfMd)` persists and synchronizes context to members. It requires admin authority, accepts up to 16,384 UTF-8 bytes, and preserves state visibility. Reading/following context remains an agent workflow convention.
+
+String group IDs and peer public keys passed to Agent methods use hexadecimal encoding. SDK identity/public-key fields remain Uint8Array; convert with `Buffer.from(key).toString('hex')` for string parameters.
 
 #### `await agent.createGroup(name: string): Promise<GroupInfo>`
 
@@ -284,7 +296,7 @@ const group = await agent.createGroup('builders');
 
 #### `await agent.inviteToGroup(groupId: string, peerPublicKey: string): Promise<void>`
 
-Invite a connected peer to a group. Admin only.
+Invite a connected peer to a group. Admin only. The caller's admin role is verified against the current group epoch. A new signed epoch is created and distributed to all members.
 
 #### `await agent.joinGroup(groupId: string): Promise<void>`
 
@@ -296,7 +308,7 @@ Leave a group. Triggers key rotation for remaining members.
 
 #### `await agent.kickFromGroup(groupId: string, memberPublicKey: string): Promise<void>`
 
-Remove a member from a group. Admin only. Triggers key rotation for remaining members.
+Remove a member from a group. Admin only -- verified against the current group epoch. Creates a new epoch excluding the removed member and triggers key rotation for remaining members.
 
 #### `agent.listGroups(): GroupInfo[]`
 
@@ -308,13 +320,18 @@ List members of a specific group with online status and roles.
 
 ### Messaging
 
-#### `await agent.sendGroupMessage(groupId: string, content: string): Promise<void>`
+`agent.listDeliveries(messageId?)` returns per-recipient records with `id`, `peerPublicKey` (hex), `status`, `attempts` and `error`. Without an ID, it returns up to 1,000 recent retained records.
 
-Send an encrypted message to a group using the Sender Keys protocol.
+Outbound messages use a local persistent queue. Acceptance returns a message ID, not proof of delivery. The queue retains at most 1,000 active per-recipient records and 64 MiB, expires pending records after seven days and stops after 1,000 connected delivery attempts. Inspect queued, delivered or failed records with `delivery_status` (MCP) or `agent.listDeliveries(messageId?)` (SDK). Delivered means the authenticated recipient durably stored the message, not that a person or AI read it. Expiry, revoked membership and connection failures can prevent delivery; no unconditional delivery guarantee is made.
 
-#### `await agent.sendDirectMessage(peerPublicKey: string, content: string): Promise<void>`
 
-Send an encrypted direct message using the Double Ratchet protocol. The peer must be connected.
+#### `await agent.sendGroupMessage(groupId: string, content: string): Promise<string>`
+
+Queue an encrypted message for current group members. Returns its message ID; inspect per-recipient outcomes separately.
+
+#### `await agent.sendDirectMessage(peerPublicKey: string, content: string): Promise<string>`
+
+Queue an encrypted direct message to a known peer. Returns its message ID; delivery can occur after reconnect.
 
 #### `agent.getMessages(opts: MessageQuery): Message[]`
 
@@ -324,7 +341,7 @@ Query stored messages with optional filters.
 interface MessageQuery {
   groupId?: string;          // filter by group
   peerPublicKey?: string;    // filter by DM peer
-  limit?: number;            // max results (default: 20)
+  limit?: number;            // max results (default: 50)
   before?: string;           // message ID for pagination
 }
 ```
@@ -348,27 +365,11 @@ Mark a peer as trusted.
 
 Remove trust from a peer.
 
-### TTYA (Talk To Your Agent)
+### TTYA (deferred)
 
-#### `await agent.startTTYA(options: { port: number, autoApprove?: boolean }): Promise<TTYABridge>`
+TTYA is outside the supported API offering. See the [archival implementation reference](../connect/ttya.md).
 
-Start the TTYA web bridge. Connects browser visitors to the agent via Hyperswarm.
-
-```typescript
-const ttya = await agent.startTTYA({ port: 3000, autoApprove: false });
-```
-
-#### TTYABridge methods
-
-| Method | Description |
-|--------|-------------|
-| `getPendingVisitors()` | List visitors awaiting approval |
-| `approve(visitorId: string)` | Approve a visitor's connection |
-| `reject(visitorId: string)` | Reject a visitor |
-| `reply(visitorId: string, content: string)` | Send a reply to a visitor |
-| `await stop()` | Stop the TTYA bridge |
-
-### Events
+## Events
 
 The Agent class extends `EventEmitter`. Subscribe to events for real-time updates.
 
@@ -387,9 +388,9 @@ The Agent class extends `EventEmitter`. Subscribe to events for real-time update
 | `group:message` | `GroupMessage` | Encrypted group message received and decrypted |
 | `group:joined` | `GroupInfo` | Agent joined a group |
 | `group:invited` | `GroupInvite` | Agent was invited to a group |
-| `group:memberJoined` | `MemberEvent` | A member joined a group |
+| `group:epochUpdated` | `{ groupId: Uint8Array; version: number }` | An authenticated membership epoch was applied |
 | `group:memberLeft` | `MemberEvent` | A member left a group |
-| `group:keysRotated` | `{ groupId }` | Sender keys rotated (after 100 messages or member removal) |
+| `group:keysRotated` | `{ groupId }` | Sender keys rotated (after 100 actual encryptions, 24-hour generation age or member removal) |
 
 #### Direct message events
 
@@ -398,7 +399,7 @@ The Agent class extends `EventEmitter`. Subscribe to events for real-time update
 | `dm:message` | `DirectMessage` | Direct message received and decrypted |
 | `dm:sent` | `DirectMessage` | Direct message sent (stored locally) |
 
-#### TTYA events
+#### TTYA events (deferred implementation reference)
 
 | Event | Payload | Description |
 |-------|---------|-------------|
@@ -490,7 +491,7 @@ interface GroupInvite {
 }
 ```
 
-### TTYAVisitorRequest
+### TTYAVisitorRequest (deferred implementation reference)
 
 ```typescript
 interface TTYAVisitorRequest {

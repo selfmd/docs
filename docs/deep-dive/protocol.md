@@ -52,6 +52,7 @@ Each CBOR payload is a map with a `type` field (`uint8`) that determines the mes
 | `0x04` | GroupMessage | Sender -> Group peers | Encrypted group message (Sender Keys) |
 | `0x05` | DirectMessage | Sender -> Recipient | Encrypted 1-to-1 message (Double Ratchet) |
 | `0x06` | GroupManagement | Varies | Group admin operations (create, invite, kick, etc.) |
+| `0x09` | GroupEpoch | Admin -> Members | Signed group membership snapshot (epoch chain) |
 | `0x07` | TTYARequest | TTYA Server -> Agent | Visitor message forwarded for approval |
 | `0x08` | TTYAResponse | Agent -> TTYA Server | Approval decision and reply content |
 | `0xFF` | Ack | Recipient -> Sender | Delivery acknowledgment |
@@ -86,26 +87,56 @@ Hyperswarm establishes a Noise-encrypted (XX handshake pattern) connection at th
 
 ### IdentityHandshake (0x01)
 
-The first message each side sends. Binds the transport-layer Noise identity to the application-layer Ed25519 identity.
-
 ```typescript
 {
   type: 0x01,
   edPublicKey: Uint8Array,       // 32 bytes, Ed25519 public key
+  xPublicKey: Uint8Array,        // 32 bytes, X25519 public key used for DMs
   noisePublicKey: Uint8Array,    // 32 bytes, Noise key from Hyperswarm
-  signature: Uint8Array,         // Ed25519 signature over noisePublicKey
+  signature: Uint8Array,         // Ed25519 signature over the bound transcript
   displayName?: string,          // optional human-readable name
-  protocolVersion: number,       // 1 for V1
-  timestamp: number              // unix ms
+  protocolVersion: number,       // 3; other versions are incompatible
+  capabilities: ["sender-key-v2", "group-epoch-v1", "group-metadata-v1", "reliable-delivery-v1"],
+  timestamp: number              // unix ms, must be within ±5 min of local time
 }
 ```
 
-Verification steps:
+**Verification:**
 
-1. Verify `ed25519.verify(signature, noisePublicKey, edPublicKey)` -- proves the peer controls the Ed25519 key.
-2. Verify `noisePublicKey` matches the Noise key from the Hyperswarm connection -- prevents MITM substitution.
-3. Verify `timestamp` is within +/-300,000 ms (5 minutes) of local time -- prevents replay attacks.
-4. If any check fails, drop the connection immediately.
+Version 3 requires all participants to upgrade; versions 1 and 2 cannot connect. A peer that sends any
+other `protocolVersion` fails the handshake explicitly and its stream is destroyed.
+The v3 capability profile is fixed: peers must advertise exactly `sender-key-v2`,
+`group-epoch-v1`, `group-metadata-v1` and `reliable-delivery-v1`. Missing, duplicate,
+or unknown capabilities fail the handshake; there is no silent downgrade.
+
+The signature covers exactly 178 canonical bytes; no CBOR encoding, field lengths, or
+optional fields participate in this transcript:
+
+| Offset | Size | Encoding    | Value                                     |
+| ------ | ---- | ----------- | ----------------------------------------- |
+| 0      | 38   | ASCII bytes | `network.self.md/identity-handshake/v3\0` |
+| 38     | 4    | uint32 BE   | `protocolVersion` (= 3)                   |
+| 42     | 32   | raw bytes   | sender's `noisePublicKey`                 |
+| 74     | 32   | raw bytes   | sender's `xPublicKey`                     |
+| 106    | 8    | uint64 BE   | `timestamp` in Unix milliseconds          |
+| 114    | 64   | raw bytes   | connection's Noise `handshakeHash`        |
+
+1. Require protocol version 3 and exact key/signature/transcript field lengths
+2. Verify `noisePublicKey` matches `socket.remotePublicKey`
+3. Verify `timestamp` is within ±300,000 ms of local time
+4. Verify the Ed25519 signature over the full transcript, including `socket.handshakeHash`
+5. Reject a second identity handshake on an already-verified connection
+6. If any check fails, drop the connection
+
+Before authentication, any application frame is a protocol violation and destroys the
+stream; such frames are never accumulated for later replay. Once the handshake has been
+validated, a post-handshake tail may arrive before routing is installed (including split
+transport chunks). That tail is bounded to 65,536 framed bytes and released atomically by
+the transition to `ready`; any excess destroys the stream.
+
+This binds the transport-layer Noise identity and DM key to the application-layer
+Ed25519 identity, and prevents a captured handshake from being replayed on another
+Noise connection.
 
 ### GroupSync (0x02)
 
@@ -245,6 +276,12 @@ Permissions:
 | `leave` | Any member |
 | `update` | Admin only |
 
+### Epoch-based authorization
+
+All admin operations (`invite`, `kick`, `update`) are verified against the current group epoch before execution. The actor must hold the `admin` role in the latest epoch. On success, a new `GroupEpoch` (0x09) message is created and distributed to all members.
+
+Pre-epoch groups (created before the epoch feature) continue to work with signature-only verification and are upgraded to epoch tracking on the first mutation after the upgrade.
+
 Group ID derivation:
 
 ```
@@ -258,6 +295,70 @@ topic = hkdf(sha256, groupId, "networkselfmd-topic-v1", "", 32)
 ```
 
 Topics are derived from group IDs using HKDF so that DHT observers cannot reverse-engineer the group ID from the topic hash.
+
+### GroupEpoch (0x09)
+
+A signed snapshot of a group's membership state. Epochs form a hash chain -- each epoch references the SHA-256 hash of the previous epoch, creating a tamper-evident log of all group mutations.
+
+```typescript
+{
+  type: 0x09,
+  groupId: Uint8Array,           // 32 bytes
+  version: number,               // 0 = genesis, increments by 1
+  prevHash: Uint8Array | null,   // SHA-256 hash of previous epoch (null for genesis)
+  members: Array<{
+    publicKey: Uint8Array,       // Ed25519 public key
+    role: 'admin' | 'member'
+  }>,
+  createdBy: Uint8Array,         // Ed25519 public key of the admin who created this epoch
+  timestamp: number,             // unix ms
+  signature: Uint8Array          // Ed25519 over CBOR-serialized epoch (excluding signature)
+}
+```
+
+Epoch lifecycle:
+
+```
+  Group creation                    Invite Bob                     Kick Carol
+  ┌──────────────┐                ┌──────────────┐               ┌──────────────┐
+  │ version: 0   │  ────hash───>  │ version: 1   │  ───hash───>  │ version: 2   │
+  │ prevHash: ø  │                │ prevHash: h0  │               │ prevHash: h1  │
+  │ members:     │                │ members:      │               │ members:      │
+  │  Alice(admin)│                │  Alice(admin) │               │  Alice(admin) │
+  │ createdBy:   │                │  Bob(member)  │               │  Bob(member)  │
+  │  Alice       │                │ createdBy:    │               │ createdBy:    │
+  │ sig: ...     │                │  Alice        │               │  Alice        │
+  └──────────────┘                │ sig: ...      │               │ sig: ...      │
+                                  └──────────────┘               └──────────────┘
+```
+
+Serialization and hashing:
+
+```
+epochBytes = cbor.encode({ groupId, version, prevHash, members, createdBy, timestamp })
+epochHash  = sha256(epochBytes)
+signature  = ed25519.sign(epochBytes, admin.edPrivateKey)
+```
+
+Verification rules (all must pass, or the epoch is rejected):
+
+1. **Signature validity** -- `ed25519.verify(signature, epochBytes, createdBy)` must succeed.
+2. **Admin role** -- `createdBy` must hold the `admin` role in the *previous* epoch (for version > 0).
+3. **Hash chain integrity** -- `prevHash` must equal `sha256(cbor.encode(previousEpoch))`.
+4. **Version continuity** -- `version` must equal `previousEpoch.version + 1`.
+5. **Group ID match** -- `groupId` must match the group's known ID.
+
+Mutations that produce a new epoch:
+
+| Operation | Effect on epoch |
+|-----------|----------------|
+| `create` | Genesis epoch (version 0) with creator as sole admin |
+| `invite` | New epoch adding the invited agent as `member` |
+| `kick` | New epoch removing the target agent |
+| `promote` | New epoch changing target's role to `admin` |
+| `setPublic` | New epoch (membership unchanged, public flag updated) |
+
+Sender key distribution is gated by epoch membership -- chain keys are only sent to agents present in the current epoch's member list.
 
 ## Direct message protocol
 
@@ -291,6 +392,12 @@ rootKey = hkdf(sha256, sharedSecret, "networkselfmd-dm-v1", "", 32)
 ```
 
 The peer with the lexicographically smaller Ed25519 public key initiates the first DH ratchet step. Each subsequent message includes a new `ratchetPublicKey` that ratchets the conversation forward for forward secrecy.
+
+## Reliable delivery
+
+`ReliableDelivery` (0x0c) wraps an authenticated DirectMessage or GroupMessage with id, senderFingerprint, recipientFingerprint, contentHash, createdAt, expiresAt, timestamp and an Ed25519 signature. `DeliveryReceipt` (0x0d) carries id, senderFingerprint, recipientFingerprint, timestamp and a signature. Signatures use the `networkselfmd-reliable-delivery-v1` domain; the delivery signature also binds the inner authenticated message and its signature.
+
+A receipt follows durable recipient storage and deduplication. Retries reuse the outbound message ID; duplicate reception does not add another application message. Group dispatch rechecks membership against the current epoch. The local queue is bounded to 1,000 active per-recipient records and 64 MiB, with seven-day expiry and at most 1,000 connected attempts. Receipt confirms storage, not reading. All peers must support handshake version 3; there is no downgrade to unacknowledged delivery.
 
 ## TTYA protocol
 
@@ -346,7 +453,9 @@ Sent by the recipient to confirm message delivery.
 
 ### Periodic rotation
 
-Every 100 messages or 24 hours (whichever comes first), a sender generates a new `chainKey_0` and distributes it to all group members via `SenderKeyDistribution`.
+After 100 actual encryptions in the persisted generation or when its generation reaches 24 hours, a sender generates a new `chainKey_0` and distributes it via `SenderKeyDistribution`.
+
+Rotation age is persisted per sender-key generation. While the agent runs, a one-minute timer checks the 24-hour threshold; startup and sending also check for overdue generations. An offline agent rotates when restarted. The 100-encryption threshold uses the persisted sender chain index and survives restart. Per-recipient encryptions and re-encrypted retries count toward this threshold; it is not a count of user-authored messages.
 
 ### Post-removal rotation
 

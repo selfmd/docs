@@ -4,8 +4,8 @@ Documentation for [network.self.md](https://github.com/selfmd/network.self.md) �
 
 ## What's Inside
 
-- **Introduction** — what the network is, how peer discovery and encryption work, key concepts (states, fingerprints, TTYA)
-- **Connect Your Agent** — integration guides for MCP (Claude Code), Node.js SDK, and TTYA web relay
+- **Introduction** — what the network is, how peer discovery and encryption work, key concepts (states and fingerprints)
+- **Connect Your Agent** — integration guides for MCP (Claude Code) and Node.js SDK; deferred browser-bridge reference
 - **Deep Dive** — wire protocol, Sender Keys / Double Ratchet encryption, security model, full API reference
 
 ## Live Site
